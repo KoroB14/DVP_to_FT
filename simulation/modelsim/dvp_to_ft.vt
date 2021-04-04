@@ -1,0 +1,319 @@
+// Copyright (C) 2018  Intel Corporation. All rights reserved.
+// Your use of Intel Corporation's design tools, logic functions 
+// and other software and tools, and its AMPP partner logic 
+// functions, and any output files from any of the foregoing 
+// (including device programming or simulation files), and any 
+// associated documentation or information are expressly subject 
+// to the terms and conditions of the Intel Program License 
+// Subscription Agreement, the Intel Quartus Prime License Agreement,
+// the Intel FPGA IP License Agreement, or other applicable license
+// agreement, including, without limitation, that your use is for
+// the sole purpose of programming logic devices manufactured by
+// Intel and sold by Intel or its authorized distributors.  Please
+// refer to the applicable agreement for further details.
+
+// *****************************************************************************
+// This file contains a Verilog test bench template that is freely editable to  
+// suit user's needs .Comments are provided in each section to help the user    
+// fill out necessary details.                                                  
+// *****************************************************************************
+// Generated on "01/13/2021 17:04:34"
+                                                                                
+// Verilog Test Bench template for design : dvp_to_ft
+// 
+// Simulation tool : ModelSim-Altera (Verilog)
+// 
+// NOTE: Only FPGA_PROCESSING = 2 mode is supported.
+`timescale 1 ps/ 1 ps
+`include "detect_edge.v"
+`include "pix_gen.v"
+module dvp_to_ft_vlg_tst();
+
+
+reg [7:0] treg_DATA = 8'h01;
+reg PCLK_cam = 0; 
+reg RXF_n = 0;
+reg TXE_n = 1'b1;
+reg clk = 0;
+reg clk_50 = 0;
+reg rst_n = 0;
+// wires                                               
+wire [7:0]  DATA;
+wire OE_n;
+wire RD_n;
+wire SI_n;
+wire WR_n;
+wire XCLK_cam;
+wire on_off_cam;
+wire res_cam;
+wire sioc;
+wire siod;
+wire HREF_cam;
+wire VSYNC_cam;
+wire [7:0] data_cam;
+///////////////////////////////
+//`define OV5642_1920x1080_7_5fps
+`define OV5642_1280x720_15fps
+parameter FAST_SIM = 1;
+parameter COLOR_MODE = 2;
+parameter mul = (COLOR_MODE == 2) ? 2 : 1;
+`ifdef OV5642_1920x1080_7_5fps
+//OV5642 1920x1080x7.5      
+parameter Fpclk = 96/2;      
+parameter Tp = 10**6/ Fpclk;   
+parameter HREF = mul*1920;
+parameter HREF_pause = mul*598;
+parameter Tline = mul*2518;
+parameter Vsync = 4;
+parameter Vsync_pause = 8;   
+parameter Vsync_back = 20;  
+parameter Line_max = 1112;
+parameter IM_X = 1920;
+parameter IM_Y = 1080;
+parameter I2C_ADDR_16 = 1;   
+parameter CAMERA_ADDR = 8'h78;     
+`endif    
+
+`ifdef OV5642_1280x720_15fps
+//OV5642 1280x720x15     
+parameter Fpclk = 96/2;      
+parameter Tp = 10**6/ Fpclk;   
+parameter HREF = mul*1280;
+parameter HREF_pause = mul*882;
+parameter Tline = mul*2162;
+parameter Vsync = 4;
+parameter Vsync_pause = 8;   
+parameter Vsync_back = 8;  
+parameter Line_max = 740;
+parameter IM_X = 1280;
+parameter IM_Y = 720;
+parameter I2C_ADDR_16 = 1;   
+parameter CAMERA_ADDR = 8'h78;     
+`endif  
+///////////////////////////////
+// assign statements (if any)                          
+assign DATA = (!OE_n) ? treg_DATA : 8'hzz;
+dvp_to_ft
+#(
+	.FAST_SIM(FAST_SIM),
+	.IM_X(IM_X),
+	.IM_Y(IM_Y),
+	.COLOR_MODE(COLOR_MODE),
+	.FPGA_PROCESSING(2)
+)
+ i1 (
+// port map - connection between master ports and signals/registers   
+	.DATA(DATA),
+	.HREF_cam(HREF_cam),
+	.OE_n(OE_n),
+	.PCLK_cam(PCLK_cam),
+	.RD_n(RD_n),
+	.RXF_n(RXF_n),
+	.SI_n(SI_n),
+	.TXE_n(TXE_n),
+	.VSYNC_cam(VSYNC_cam),
+	.WR_n(WR_n),
+	.XCLK_cam(XCLK_cam),
+	.clk(clk),
+	.data_cam(data_cam),
+	.on_off_cam(on_off_cam),
+	.res_cam(res_cam),
+	.clk_50(clk_50),
+	.rst_n(rst_n),
+	.sioc(sioc),
+	.siod(siod)
+);
+
+
+localparam GET_CFG = 8'h01;
+localparam STRT_ST = 8'h11;
+localparam STOP_ST = 8'h0f;
+localparam BYTES = (COLOR_MODE * IM_X) + 2;
+localparam XBITS = $clog2(BYTES) + 1;
+localparam BYTES_TOTAL = IM_Y*(IM_X*COLOR_MODE + 2) + 0;
+wire [XBITS - 1 : 0] fifo_usedw = i1.ft_ctrl_inst.usedw;
+wire [XBITS - 1 : 0] ft_send_cnt = i1.ft_ctrl_inst.send_cnt;
+wire [4 : 0] ctrl_state = i1.ft_ctrl_inst.ctrl_state;
+wire fifo_full = i1.ft_ctrl_inst.fifo_full;
+///////////////////////////
+reg [7:0] send_ram[IM_Y*(IM_X*COLOR_MODE + 2) - 1:0];
+//////////////////////////
+//clocks & reset
+initial                                                
+begin                                                  
+
+#1000 rst_n = 1'b1;     
+               
+end
+always
+#(16666/2) clk <= ~clk;
+
+always
+	#(Tp / 2)  PCLK_cam <= ~PCLK_cam;
+
+always                                                 
+	#10000 clk_50 <= ~clk_50;
+//////////////////
+
+
+//////////////////
+//generate pixel data
+pix_gen
+#(	.HREF(HREF), 
+	.HREF_pause(HREF_pause),
+	.Line_max(Line_max),
+	.Vsync(Vsync),
+	.Vsync_pause(Vsync_pause), 
+	.Vsync_back(Vsync_back),
+	.COLOR_MODE(COLOR_MODE),
+	.SIMPLE_SIGNAL(0)
+)
+pix_gen_inst
+(
+	.data_cam(data_cam),
+	.VSYNC_cam(VSYNC_cam),
+	.HREF_cam(HREF_cam),
+	.PCLK_cam(PCLK_cam)	
+	
+	
+);
+reg [31:0] linecnt = 0;
+always @ (negedge HREF_cam or posedge VSYNC_cam)
+if (VSYNC_cam)	
+	linecnt <= 0;
+else
+	linecnt <= linecnt + 1'b1;
+//////////////////
+wire vsync_fall;
+wire href_fall;
+detect_falling_edge detect_vsync_fedge
+(
+	.clk(PCLK_cam),
+	.rst_n(rst_n),
+	.signal(VSYNC_cam),
+	.out(vsync_fall)
+);
+//line counter
+detect_falling_edge detect_href_fedge
+(
+	.clk(PCLK_cam),
+	.rst_n(rst_n),
+	.signal(HREF_cam),
+	.out(href_fall)
+);
+//////////////////
+reg [31:0] frame_cnt = 0;
+always @ (posedge PCLK_cam) begin
+if (vsync_fall)
+	frame_cnt <= frame_cnt + 1'b1;
+end
+
+//////////////////
+reg [31:0] send_tot = 0;
+reg [31:0] cnt = 0;
+reg [31:0] recv_tot = 0;
+reg [31:0] recv_cnt = 0;
+reg [31:0] pause_cnt = 0;
+always @ (negedge PCLK_cam)
+if (HREF_cam) begin
+	send_tot <= send_tot + 1'b1;
+	send_ram[send_tot] <= data_cam;
+	end
+else if (href_fall & linecnt < IM_Y) begin
+	send_ram[send_tot] <= linecnt[7:0];
+	send_ram[send_tot + 1] <= linecnt[15:8];
+	send_tot <= send_tot + 2;
+	end
+else if (vsync_fall) begin
+	send_ram[send_tot] <= 0;
+	send_ram[send_tot + 1] <= 0;
+	send_tot <= send_tot + 2;
+	end
+else if (VSYNC_cam)
+	send_tot <= 0;
+
+
+reg start_check = 0;
+always @ (posedge clk) begin 
+if (!RD_n) begin
+	RXF_n <= 1'b1;
+	TXE_n <= 0;
+	end	
+
+if ((recv_tot == 5) & treg_DATA != STRT_ST) begin
+	RXF_n <= 0;
+	TXE_n <= 1'b1;
+	treg_DATA <= STRT_ST;
+	recv_tot <= 0;
+	start_check <= 1'b1;
+	end
+
+if (!WR_n) begin
+	recv_cnt <= recv_cnt + 1'b1;
+	end
+
+if ((recv_cnt == 1024 + 5) ) begin
+	TXE_n <= 1'b1;
+	
+	
+end
+
+if ((recv_cnt >= 1024 + 5) & TXE_n ) begin
+	pause_cnt <= pause_cnt + 1'b1;
+	
+end
+
+if (pause_cnt == 512) begin
+	TXE_n <= 1'b0;
+	recv_cnt <= 0;
+	pause_cnt <= 0;
+end
+
+if (!WR_n & !TXE_n) begin
+	recv_tot <= recv_tot + 1'b1;
+	if (start_check) begin
+	if (send_ram[recv_tot] != DATA) begin
+		$display("Error on count ", recv_tot);
+		$display("Memory value ", send_ram[recv_tot]);
+		$display("Received value ", DATA);
+		$stop();
+		end
+	
+	
+	end
+
+end
+
+if (recv_tot == BYTES_TOTAL) begin
+	
+	if (send_tot == recv_tot) begin
+		$display("Send and receive counters match ", send_tot);
+		$display("No errors found");
+		end
+	else
+		$display("Send and receive counters NOT match ", send_tot, recv_tot);
+	recv_tot <= 0;
+end
+
+if (frame_cnt == 3) begin
+	RXF_n <= 0;
+	TXE_n <= 1'b1;
+	treg_DATA <= STOP_ST;
+	#130000 $stop();
+	end
+end	 
+
+
+
+ 
+always @ (posedge PCLK_cam)
+if (fifo_full & HREF_cam) begin
+	$display("FIFO overflow");
+	#130000 $stop();
+	end
+	
+
+
+
+endmodule
+
