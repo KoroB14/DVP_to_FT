@@ -133,7 +133,7 @@ localparam XBITS = $clog2(BYTES) + 1;
 localparam BYTES_TOTAL = IM_Y*(IM_X*COLOR_MODE + 2) + 0;
 wire [XBITS - 1 : 0] fifo_usedw = i1.ft_ctrl_inst.usedw;
 wire [XBITS - 1 : 0] ft_send_cnt = i1.ft_ctrl_inst.send_cnt;
-wire [4 : 0] ctrl_state = i1.ft_ctrl_inst.ctrl_state;
+wire [5 : 0] ctrl_state = i1.ft_ctrl_inst.ctrl_state;
 wire fifo_full = i1.ft_ctrl_inst.fifo_full;
 ///////////////////////////
 reg [7:0] send_ram[IM_Y*(IM_X*COLOR_MODE + 2) - 1:0];
@@ -295,7 +295,7 @@ if (recv_tot == BYTES_TOTAL) begin
 	recv_tot <= 0;
 end
 
-if (frame_cnt == 3) begin
+if (frame_cnt == 21) begin
 	RXF_n <= 0;
 	TXE_n <= 1'b1;
 	treg_DATA <= STOP_ST;

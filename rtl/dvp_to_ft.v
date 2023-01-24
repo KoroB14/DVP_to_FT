@@ -41,7 +41,9 @@ module dvp_to_ft
 	output		res_cam,
 	output		on_off_cam,	
 	output		sioc,
-	output		siod
+	output		siod,
+	//Error indication
+	output 		err_led
 	
 );
 //declarations
@@ -59,10 +61,12 @@ wire 			pixdata_valid;
 wire 			in_ready;
 wire			start_stream;
 wire			wrclk;
+wire			error;
 //assignments
+assign on_off_cam = 0;
 assign res_cam = 0;
 assign XCLK_cam = 1'bz;
-
+assign err_led = ~error ;
 //rst sync
 sync rst_sync
 (
@@ -152,6 +156,7 @@ ft_ctrl
 	.read_data		(read_data),
 	.read				(read),
 	.write			(write),
-	.write_data		(write_data)
+	.write_data		(write_data),
+	.error			(error)
 );
 endmodule

@@ -69,7 +69,8 @@ set_output_delay -clock virt_clk_usb -min [expr $CLKBs_min - $tHb + $BDb_min - $
 set_false_path -from [get_ports {rst_n}] -to {*}
 set_false_path -to [get_ports {sioc}]
 set_false_path -to [get_ports {siod}]
-
+set_false_path -to [get_ports {on_off_Cam}]
+set_false_path -to [get_ports {err_led}]
 #OV5642 camera clock
 set PCLK_FREQ "96MHz"
 set CAM_DATA_DELAY 2.500

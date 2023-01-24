@@ -23,7 +23,8 @@ module ft_ctrl
 	input wire	[7:0] read_data,
 	output reg			read,
 	output reg 			write,
-	output reg   [7:0] write_data
+	output reg   [7:0] write_data,
+	output reg 			error
 );
 //Ctrl params
 localparam GET_CFG = 8'h01;
@@ -31,26 +32,30 @@ localparam STRT_ST = 8'h11;
 localparam STOP_ST = 8'h0f;
 //FSM params
 localparam IDLE = 0;
-localparam RECV_CMD = 5'b00001;
-localparam SEND_CFG = 5'b00010;
-localparam WAIT_FIF = 5'b00100;
-localparam SEND_PIX = 5'b01000;
-localparam PAUSE_SD = 5'b10000;
+localparam RECV_CMD = 6'b000001;
+localparam SEND_CFG = 6'b000010;
+localparam WAIT_FIF = 6'b000100;
+localparam SEND_CNT = 6'b001000;
+localparam SEND_PIX = 6'b010000;
+localparam PAUSE_SD = 6'b100000;
 //Packet params
 localparam PacketID = (COLOR_MODE == 1) ? 8'hAA : ((COLOR_MODE == 2) ? 8'hBB : 0);
 localparam BYTES = COLOR_MODE * IM_X + 2;
 localparam XBITS = $clog2(2*BYTES);
+
 //declarations
 wire [7:0] fifo_data;
 wire fifo_full;
 wire fifo_empty;
 wire [XBITS - 1 : 0] usedw;
+reg [15 : 0] line_cnt;
 reg [XBITS - 1 : 0] send_cnt;
-reg [4:0] ctrl_state;
+reg [5:0] ctrl_state;
 reg [7:0] pkt_data;
 reg [2:0] rdaddress;
 wire rd_fifo = (ctrl_state == SEND_PIX) & wr_ready & !fifo_empty & (send_cnt < BYTES - 2);
 reg wr_data;
+reg sent_lcnt;
 
 //pixel data fifo
 assign in_ready = ~fifo_full;
@@ -83,7 +88,7 @@ always @ (posedge clk or negedge rst_n)
 if (!rst_n)
 	write <= 0;
 else
-	write <= (((ctrl_state == SEND_CFG)) | (wr_data & (send_cnt <= BYTES - 2)) | ((ctrl_state == PAUSE_SD) )) & wr_ready;
+	write <= ((ctrl_state == SEND_CFG) | (wr_data & (send_cnt <= BYTES - 2)) | ((ctrl_state == PAUSE_SD) |  (ctrl_state == SEND_CNT))) & wr_ready;
 //FSM
 always @ (posedge clk or negedge rst_n)
 if (!rst_n) begin
@@ -93,6 +98,7 @@ if (!rst_n) begin
 	start_stream <= 0;
 	write_data <= 0;
 	wr_data <= 0;
+	sent_lcnt <= 0;
 end
 else begin
 	case (ctrl_state)
@@ -132,10 +138,19 @@ else begin
 								read <= 1'b1;
 								ctrl_state <= RECV_CMD;
 							end
-							if ((usedw >= BYTES ) & wr_ready) begin
-								ctrl_state <= SEND_PIX;
+							if ((usedw >= BYTES -2) & wr_ready) begin
+								ctrl_state <= SEND_CNT;
 							end
 						end
+		SEND_CNT	:	begin
+							if (wr_ready) begin
+									sent_lcnt <= ~sent_lcnt;
+									write_data <= sent_lcnt ? line_cnt[15:8] : line_cnt[7:0];
+									if (sent_lcnt) begin
+										ctrl_state <= SEND_PIX;
+									end
+							end
+						end 
 		SEND_PIX	:	begin
 							if (wr_ready) begin
 								if (send_cnt == BYTES - 1) begin
@@ -150,12 +165,19 @@ else begin
 							else begin
 								wr_data <= 0;
 								ctrl_state <= PAUSE_SD;
+								
 								end
 						end
 		PAUSE_SD	:	begin
 							if (wr_ready) begin
-								wr_data <= 1'b1;
-								ctrl_state <= SEND_PIX;
+								if (send_cnt == 2) begin
+									write_data <= fifo_data;
+									ctrl_state <= SEND_PIX;
+									end
+								else begin
+									wr_data <= 1'b1;
+									ctrl_state <= SEND_PIX;
+								end
 								
 							end
 						end
@@ -171,5 +193,21 @@ else if (write & wr_ready)
 	send_cnt <= send_cnt + 1'b1;
 else if (ctrl_state == IDLE || ctrl_state == WAIT_FIF)
 	send_cnt <= 0;
+//line cnt
+always @ (posedge clk or negedge rst_n)
+if (!rst_n)
+	line_cnt <= 0;
+else if (((send_cnt == BYTES) && (line_cnt == IM_Y - 1)) || (ctrl_state == IDLE))
+	line_cnt <= 0;
+else if (send_cnt == BYTES)
+	line_cnt <= line_cnt + 1'b1;
+//error indication
+wire err_rst = rst_n & start_stream;
+always @ (posedge wrclk or negedge err_rst)
+if (!err_rst)
+	error <= 0;
+else if (fifo_full && in_valid)
+	error <= 1'b1;
+
 	
 endmodule

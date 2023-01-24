@@ -29,12 +29,9 @@ reg						start;
 reg 		[15:0] 		pixdata;	
 reg 		[7: 0] 		R, G, B;
 reg 		[7: 0]		pixel_r;
-reg		[15:0]		line_cnt;
-reg						send_lcnt;
-reg						sent_lcnt;
 wire 						vsync_fall;
 wire 						start_stream_s;
-wire						href_fall;
+
 //Vsync falling edge detector
 detect_falling_edge detect_vsync_fedge
 (
@@ -43,29 +40,7 @@ detect_falling_edge detect_vsync_fedge
 	.signal(VSYNC_cam),
 	.out(vsync_fall)
 );
-//line counter
-detect_falling_edge detect_href_fedge
-(
-	.clk(PCLK_cam),
-	.rst_n(rst_n),
-	.signal(HREF_cam),
-	.out(href_fall)
-);
-always @ (posedge PCLK_cam or negedge rst_n)
-	if (!rst_n)
-		line_cnt <= 0;
-	else if (href_fall & start)
-		line_cnt <= line_cnt + 1'b1;
-	else if (VSYNC_cam)
-		line_cnt <= 0;
-//push counter value into fifo
-always @ (posedge PCLK_cam or negedge rst_n)		
-	if (!rst_n)
-		send_lcnt <= 0;
-	else if (((vsync_fall & start_stream_s) | (href_fall & start)) & (line_cnt < IM_Y - 1))
-		send_lcnt <= 1'b1;
-	else if (sent_lcnt)
-		send_lcnt <= 0;
+
 //sync start stream
 sync st_stream_sync
 (
@@ -128,21 +103,14 @@ else begin
 	end
 //Convert to grayscale
 always @( posedge PCLK_cam)
-if (send_lcnt) begin
-		pixel_r <= sent_lcnt ? line_cnt[15:8] : line_cnt[7:0];
-		pixel_valid_r <= start_stream_s & out_ready;
-		sent_lcnt <= ~sent_lcnt;
-		end
-else if (RGB_valid) begin	
-		pixel_r <= (R>>2)+(R>>5)+(G>>1)+(G>>4)+(B>>4)+(B>>5);
-		pixel_valid_r <= out_ready;
-	end
-else begin	
+if (!RGB_valid) begin
 	pixel_r <= 0;
 	pixel_valid_r <= 0;
-	sent_lcnt <= 0;
 	end
-
+else begin
+	pixel_r <= (R>>2)+(R>>5)+(G>>1)+(G>>4)+(B>>4)+(B>>5);
+	pixel_valid_r <= out_ready;
+	end	
 
 end
 // Reg for RGB
@@ -151,18 +119,10 @@ always @( posedge PCLK_cam or negedge rst_n )
 	if (!rst_n) begin
 		pixel_r <= 0;
 		pixel_valid_r <= 0;
-		sent_lcnt <= 0;
 		end
 	else begin
-		if (send_lcnt) begin
-			pixel_r <= sent_lcnt ? line_cnt[15:8] : line_cnt[7:0];
-			pixel_valid_r <= start_stream_s & out_ready;
-			sent_lcnt <= ~sent_lcnt;
-			end
-		else begin	
-			pixel_r <= data_cam;
-			pixel_valid_r <= HREF_cam & start & out_ready;
-			end
+		pixel_r <= data_cam;
+		pixel_valid_r <= HREF_cam & start & out_ready;
 		end
 
 
