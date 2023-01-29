@@ -48,11 +48,8 @@ def ProcessImageRGB (im_to_show, im_array):
       
 
         
-def ShowImage(im_type, IM_X, IM_Y, h):
-    global im_array1
-    global im_array2
-    global SecondFrame
-    global DataReady
+def ShowImage(im_type, IM_X, IM_Y, h, DataReady, SecondFrame, im_array1, im_array2):
+    
     STOP_ST = c_ubyte(0x0f) #Stop stream command
     im_cnt = 0
     if (im_type == 2):
@@ -63,8 +60,8 @@ def ShowImage(im_type, IM_X, IM_Y, h):
         win_name = "FPGA video - " + str(IM_X) + "x" + str(IM_Y) + " grayscale"
    
     while (True):
-        if (DataReady.isSet()):
-            if (SecondFrame):
+        if (DataReady.is_set()):
+            if (SecondFrame.is_set()):
                 if (im_type == 2):
                     ProcessImageRGB(im_to_show, im_array1)
                 elif (im_type == 1):
@@ -98,12 +95,7 @@ def main():
     GET_CFG = c_ubyte(0x01) #Get image params
     STRT_ST = c_ubyte(0x11) #Start stream
     STOP_ST = c_ubyte(0x0f) #Stop stream
-   
-    global im_array1
-    global im_array2
-    global SecondFrame
-    global DataReady
-    
+           
     h = c_void_p()
     #Device name
     init_string = create_string_buffer(b"FPGA Video Stream")
@@ -150,6 +142,7 @@ def main():
     recv_data = create_string_buffer(recv_count.value)
        
     DataReady = threading.Event()
+    SecondFrame = threading.Event()
     if (im_type == 1):
         im_array1 = np.zeros((IM_Y,IM_X),np.uint8)
         im_array2 = np.zeros((IM_Y,IM_X),np.uint8)
@@ -157,10 +150,9 @@ def main():
     elif (im_type == 2):
         im_array1 = np.zeros((IM_Y,IM_X),np.uint16)
         im_array2 = np.zeros((IM_Y,IM_X),np.uint16)
-    
-    SecondFrame = False
+        
     #Start show image thread
-    ShowImageThread = threading.Thread(target=ShowImage, args = (im_type, IM_X, IM_Y, h))
+    ShowImageThread = threading.Thread(target=ShowImage, args = (im_type, IM_X, IM_Y, h, DataReady, SecondFrame, im_array1, im_array2))
     ShowImageThread.daemon = True
     ShowImageThread.start()
     
@@ -182,7 +174,7 @@ def main():
             started = False
             line_cnt = 0
         
-        if (SecondFrame):
+        if (SecondFrame.is_set()):
             if (im_type == 2):
                 im_array2[line_cnt] = np.frombuffer(recv_data[2:], dtype='>u2')
             elif (im_type == 1):
@@ -194,7 +186,10 @@ def main():
                 im_array1[line_cnt] = np.frombuffer(recv_data[2:], dtype=np.uint8)
         
         if (line_cnt == IM_Y - 1):
-            SecondFrame = not SecondFrame
+            if (SecondFrame.is_set()):
+                SecondFrame.clear()
+            else:
+                SecondFrame.set()
             DataReady.set()
             
         if (not ShowImageThread.is_alive()):

@@ -25,11 +25,8 @@ def ProcessImageRGB(im_to_show, im_array):
       
 
         
-def ShowImage(im_type, IM_X, IM_Y, h):
-    global im_array1
-    global im_array2
-    global SecondFrame
-    global DataReady
+def ShowImage(im_type, IM_X, IM_Y, h, DataReady, SecondFrame, im_array1, im_array2):
+    
     STOP_ST = c_ubyte(0x0f) #Stop stream command
     im_cnt = 0
     if (im_type == 2):
@@ -40,8 +37,8 @@ def ShowImage(im_type, IM_X, IM_Y, h):
         win_name = "FPGA video - " + str(IM_X) + "x" + str(IM_Y) + " grayscale"
    
     while (True):
-        if (DataReady.isSet()):
-            if (SecondFrame):
+        if (DataReady.is_set()):
+            if (SecondFrame.is_set()):
                 if (im_type == 2):
                     ProcessImageRGB(im_to_show, im_array1)
                 elif (im_type == 1):
@@ -80,13 +77,7 @@ def main():
     init_string = "FPGA Video Stream"
     im_type = 0
     started = False
-    global im_array1
-    global im_array2
-    global SecondFrame
-    global DataReady
-    global ShowImageThread
-    global LineError
-    
+        
     r_buf = create_string_buffer(1024)
     
     handle = None
@@ -134,6 +125,7 @@ def main():
     print ("Im Y", IM_Y)
        
     DataReady = threading.Event()
+    SecondFrame = threading.Event()
     if (im_type == 1):
         im_array1 = np.zeros((IM_Y,IM_X),np.uint8)
         im_array2 = np.zeros((IM_Y,IM_X),np.uint8)
@@ -142,13 +134,12 @@ def main():
         im_array1 = np.zeros((IM_Y,IM_X),np.uint16)
         im_array2 = np.zeros((IM_Y,IM_X),np.uint16)
     
-    SecondFrame = False
     #Start show image thread
-    ShowImageThread = threading.Thread(target=ShowImage, args = (im_type, IM_X, IM_Y, handle))
+    ShowImageThread = threading.Thread(target=ShowImage, args = (im_type, IM_X, IM_Y, handle, DataReady, SecondFrame, im_array1, im_array2))
     ShowImageThread.daemon = True
     ShowImageThread.start()
     
-    LineError = False
+    LineError = threading.Event()
     transfer_list = []
     #Init static variables
     ProcessData.newline = True
@@ -159,6 +150,13 @@ def main():
     ProcessData.im_type = im_type
     ProcessData.im_ptr = 0
     ProcessData.rem_ptr = 0
+    ProcessData.LineError = LineError
+    ProcessData.SecondFrame = SecondFrame
+    ProcessData.im_array1 = im_array1
+    ProcessData.im_array2 = im_array2
+    ProcessData.ShowImageThread = ShowImageThread
+    ProcessData.DataReady = DataReady
+    
     while (True):
         if (not started):
             handle._controlTransfer(0x40, 0x0B,0x40FF,0x01,None,0,1000)#sync fifo out
@@ -166,7 +164,7 @@ def main():
             handle._controlTransfer(0x40, 0x0B,0x4000,0x01,None,0,1000)#sync fifo in
             print("Starting stream")
             started = True
-            LineError = False
+            LineError.clear()
         else:
             for _ in range(USB_NUM_TRANSFERS): #fill the transfer queue 
                 transfer = handle.getTransfer()
@@ -179,7 +177,7 @@ def main():
                 transfer_list.append(transfer)
         
         
-            while  any(x.isSubmitted() for x in transfer_list) and not LineError:
+            while  any(x.isSubmitted() for x in transfer_list) and not LineError.is_set():
                 context.handleEvents()
             break    
                     
@@ -190,25 +188,23 @@ def main():
 #Buffer processing callback function    
 def ProcessData(transfer):
     
-    global SecondFrame
-    global LineError
     buflen = transfer.getActualLength()
     data = transfer.getBuffer()[:buflen]
     buf_step = 512 #Bulk packet size
     skip = 2 #skip status bytes
     if (buflen == 16384):
         for pack_ptr in range(0, buflen, buf_step):
-            if (SecondFrame):
-                im_array = im_array2
+            if (ProcessData.SecondFrame.is_set()):
+                im_array = ProcessData.im_array2
             else:
-                im_array = im_array1
+                im_array = ProcessData.im_array1
             if (ProcessData.newline):
                 line_cnt_old = ProcessData.line_cnt
                 ProcessData.line_cnt = data[pack_ptr + skip + ProcessData.im_ptr] + (data[pack_ptr + skip + ProcessData.im_ptr + 1] << 8)
                 if (ProcessData.line_cnt > ProcessData.IM_Y - 1):
                     ProcessData.line_cnt = line_cnt_old
                     print("Error in line counter", ProcessData.line_cnt)
-                    LineError = True
+                    ProcessData.LineError.set()
                     return
                 ProcessData.im_ptr += 2 #skip line counter bytes
                 ProcessData.newline = False
@@ -220,8 +216,11 @@ def ProcessData(transfer):
         
             if (ProcessData.rem == 0):
                 if (ProcessData.line_cnt == ProcessData.IM_Y - 1):
-                    SecondFrame = not SecondFrame
-                    DataReady.set()
+                    if (ProcessData.SecondFrame.is_set()):
+                        ProcessData.SecondFrame.clear()
+                    else:
+                        ProcessData.SecondFrame.set()
+                    ProcessData.DataReady.set()
                     
                 ProcessData.newline = True
                 ProcessData.buf_ptr = 0         
@@ -233,7 +232,7 @@ def ProcessData(transfer):
                     if (ProcessData.line_cnt > ProcessData.IM_Y - 1):
                         ProcessData.line_cnt = line_cnt_old
                         print("Error in line counter", ProcessData.line_cnt)
-                        LineError = True
+                        ProcessData.LineError.set()
                         return
                     ProcessData.im_ptr += 2             
                     im_buf_step = ProcessData.rem_ptr - ProcessData.im_ptr 
@@ -247,7 +246,7 @@ def ProcessData(transfer):
                 ProcessData.rem_ptr = buf_step - (ProcessData.rem+(3-ProcessData.im_type))*ProcessData.im_type 
             
     
-    if (ShowImageThread.is_alive() and not LineError):
+    if (ProcessData.ShowImageThread.is_alive() and not ProcessData.LineError.is_set()):
         transfer.submit()   
 
 
