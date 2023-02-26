@@ -38,7 +38,6 @@ The camera configuration module initializes camera registers based on mif file a
 # Camera capture module
 When configuration is done and start_stream signal set by the main FSM, the module waits for VSYNC falling edge and then captures pixel data from the camera by parallel DVP interface. 
 If grayscale mode has been selected, the module converts RGB565 -> RGB888 -> 8-bit grayscale using simple pipeline. Otherwise, pixel data is written straight to the FIFO.
-A line counter value is pushed to the FIFO before each image line.
 
 # Main FSM
 The main FSM module handles the following commands from the PC:
@@ -56,6 +55,8 @@ After receiving the get image parameters command, a five-byte image parameters p
 | 0    | IM_TYPE   | Grayscale - 0xAA, RGB565 - 0xBB |
 | 1-2  | IM_X      | Image width                     |
 | 3-4  | IM_Y      | Image height                    |
+
+When streaming, a line counter value is sent to the PC before each image line.
 
 # Hardware
 This design is based on the QMTECH Cyclone IV starter kit and the CJMCU FT232H breakout board.
